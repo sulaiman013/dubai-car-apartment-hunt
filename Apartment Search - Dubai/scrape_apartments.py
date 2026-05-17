@@ -356,114 +356,149 @@ def scrape_bayut(page) -> list[Apartment]:
 
 # ─── source: Property Finder ───────────────────────────────────────────────────
 def scrape_propertyfinder(page) -> list[Apartment]:
-    """Open Dubai-wide PF search sorted by price ASC; filter to DAFZA tiers."""
+    """Per-area scrape using PF's furnished-1BR slug URLs.
+
+    Background: the old Dubai-wide + price-ASC search returned 30 listings/page,
+    all of which were the cheapest non-DAFZA places (Discovery Gardens, JVC, etc.)
+    that the post-filter rejected, yielding zero kept. PF actually has clean
+    per-area pages like:
+
+        https://www.propertyfinder.ae/en/rent/dubai/
+            furnished-1-bedroom-apartments-for-rent-{slug}.html?page={n}
+
+    so we iterate those directly. We reuse the BAYUT_AREAS slugs since PF and
+    Bayut use the same slug conventions for Dubai areas (deira, al-qusais, etc.).
+    Some smaller areas 404 on PF — that's normal, we just log and continue.
+    """
     out: list[Apartment] = []
     seen: set[str] = set()
-    base = (
-        "https://www.propertyfinder.ae/en/search"
-        "?c=2&fu=1&bdr%5B%5D=1&pt={price}&rp=y&ob=pa&page={page}"
-    )
-    zero_streak = 0
-    for page_num in range(1, 16):
-        url = base.format(price=MAX_PRICE_AED, page=page_num)
-        log(f"  PF page {page_num}: {url}")
-        if not _safe_goto(page, url, wait_until="load"):
-            continue
-        html = page.content()
-        m = re.search(
-            r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL
-        )
-        if not m:
-            log(f"  PF: page {page_num} blocked / no NEXT_DATA")
-            zero_streak += 1
-            if zero_streak >= 2: break
-            continue
-        try:
-            data = json.loads(m.group(1))
-        except Exception as e:
-            log(f"  PF: page {page_num} parse fail: {e}")
-            continue
-        listings = (
-            data.get("props", {})
-            .get("pageProps", {})
-            .get("searchResult", {})
-            .get("listings", [])
-        )
-        if not listings:
-            zero_streak += 1
-            if zero_streak >= 2: break
-            continue
+    PF_BASE = ("https://www.propertyfinder.ae/en/rent/dubai/"
+               "furnished-1-bedroom-apartments-for-rent-{slug}.html?page={page}")
 
-        kept = 0
-        for entry in listings:
-            if entry.get("listing_type") != "property":
-                continue
-            prop = entry.get("property") or {}
-            pid = str(prop.get("id") or "")
-            if not pid or pid in seen:
-                continue
-            seen.add(pid)
-            price_obj = prop.get("price") or {}
-            price = _coerce_int(price_obj.get("value")) or 0
-            period = (price_obj.get("period") or "").lower()
-            if period != "yearly" or price <= 0 or price > MAX_PRICE_AED:
-                continue
-            beds = prop.get("bedrooms")
-            if not isinstance(beds, int) or beds != 1:
-                continue
-            loc = prop.get("location") or {}
-            full_loc = loc.get("full_name") or loc.get("path_name") or ""
-            tier_match = _match_area(full_loc)
-            if not tier_match:
-                continue
-            tier, area_name = tier_match
-            coords = loc.get("coordinates") or {}
-            images = prop.get("images") or []
-            image = ""
-            if images:
-                image = images[0].get("medium") or images[0].get("small") or ""
-            size_obj = prop.get("size") or {}
-            size_sqft = None
-            if (size_obj.get("unit") or "").lower() == "sqft":
-                size_sqft = _coerce_int(size_obj.get("value"))
-            amen = [a.get("name") for a in (prop.get("amenities") or []) if isinstance(a, dict) and a.get("name")]
-            broker = (prop.get("broker") or {}).get("name") or ""
-            agent_name = (prop.get("agent") or {}).get("name") or ""
-            agent_phone = (prop.get("broker") or {}).get("phone") or ""
-            out.append(Apartment(
-                source="PropertyFinder",
-                ad_id=f"pf_{pid}",
-                title=(prop.get("title") or "").strip(),
-                price_aed=price,
-                monthly_aed=round(price / 12),
-                bedrooms=beds,
-                bathrooms=_coerce_int(prop.get("bathrooms")),
-                size_sqft=size_sqft,
-                area=area_name,
-                commute_tier=tier,
-                full_location=full_loc,
-                furnished=True,
-                amenities=amen,
-                image=image,
-                url=prop.get("share_url") or "",
-                broker=broker,
-                agent_name=agent_name.strip(),
-                agent_phone=agent_phone,
-                lat=float(coords["lat"]) if coords.get("lat") is not None else None,
-                lon=float(coords["lon"]) if coords.get("lon") is not None else None,
-                description="",
-                scraped_at=datetime.now().isoformat(timespec="seconds"),
-            ))
-            kept += 1
-        log(f"  PF page {page_num}: kept {kept} of {len(listings)}")
-        if kept == 0:
-            zero_streak += 1
-            if zero_streak >= 3:
-                log(f"  PF: stopping after {zero_streak} empty pages")
+    for emirate, slug, tier, area_name in BAYUT_AREAS:
+        if emirate != "dubai":
+            continue   # PF area pages here are Dubai-only
+
+        zero_streak = 0
+        area_kept = 0
+        for page_num in range(1, 11):  # 33 listings/page × 10 = enough headroom
+            url = PF_BASE.format(slug=slug, page=page_num)
+            if not _safe_goto(page, url, wait_until="domcontentloaded"):
                 break
-        else:
-            zero_streak = 0
-        time.sleep(1.5)
+            # PF returns a 404 page for slugs it doesn't know — bail this area
+            if "404" in (page.title() or ""):
+                log(f"  PF {area_name}: 404 (no such PF area page)")
+                break
+
+            html = page.content()
+            m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if not m:
+                log(f"  PF {area_name} p{page_num}: no NEXT_DATA")
+                break
+            try:
+                data = json.loads(m.group(1))
+            except Exception as e:
+                log(f"  PF {area_name} p{page_num}: parse fail ({e})")
+                break
+
+            listings = (data.get("props", {}).get("pageProps", {})
+                            .get("searchResult", {}).get("listings", []))
+            if not listings:
+                # First-page empty = no inventory; later-page empty = end of pagination
+                break
+
+            kept_on_page = 0
+            for entry in listings:
+                if entry.get("listing_type") != "property":
+                    continue
+                prop = entry.get("property") or {}
+                pid = str(prop.get("id") or "")
+                if not pid or pid in seen:
+                    continue
+                seen.add(pid)
+
+                price_obj = prop.get("price") or {}
+                price = _coerce_int(price_obj.get("value")) or 0
+                period = (price_obj.get("period") or "").lower()
+                # Slug-search returns mixed rental periods — keep yearly only
+                if period != "yearly" or price <= 0 or price > MAX_PRICE_AED:
+                    continue
+
+                beds = prop.get("bedrooms")
+                if not isinstance(beds, int) or beds != 1:
+                    continue
+
+                # Slug-search guarantees the location, but double-check the property's
+                # tagged location matches our DAFZA-tier list (rejects listings that
+                # PF mis-tags into a DAFZA-area slug page).
+                loc = prop.get("location") or {}
+                full_loc = loc.get("full_name") or loc.get("path_name") or ""
+                tier_match = _match_area(full_loc)
+                if not tier_match:
+                    # Trust the URL slug as fallback so we don't drop genuine hits
+                    # when PF's location string is unusual.
+                    effective_tier, effective_area = tier, area_name
+                else:
+                    effective_tier, effective_area = tier_match
+
+                coords = loc.get("coordinates") or {}
+                images = prop.get("images") or []
+                image = ""
+                if images:
+                    image = images[0].get("medium") or images[0].get("small") or ""
+                size_obj = prop.get("size") or {}
+                size_sqft = None
+                if (size_obj.get("unit") or "").lower() == "sqft":
+                    size_sqft = _coerce_int(size_obj.get("value"))
+                amen = [a.get("name") for a in (prop.get("amenities") or [])
+                        if isinstance(a, dict) and a.get("name")]
+                broker = (prop.get("broker") or {}).get("name") or ""
+                agent_name = (prop.get("agent") or {}).get("name") or ""
+                agent_phone = (prop.get("broker") or {}).get("phone") or ""
+
+                out.append(Apartment(
+                    source="PropertyFinder",
+                    ad_id=f"pf_{pid}",
+                    title=(prop.get("title") or "").strip(),
+                    price_aed=price,
+                    monthly_aed=round(price / 12),
+                    bedrooms=beds,
+                    bathrooms=_coerce_int(prop.get("bathrooms")),
+                    size_sqft=size_sqft,
+                    area=effective_area,
+                    commute_tier=effective_tier,
+                    full_location=full_loc,
+                    furnished=True,
+                    amenities=amen,
+                    image=image,
+                    url=prop.get("share_url") or "",
+                    broker=broker,
+                    agent_name=agent_name.strip(),
+                    agent_phone=agent_phone,
+                    lat=float(coords["lat"]) if coords.get("lat") is not None else None,
+                    lon=float(coords["lon"]) if coords.get("lon") is not None else None,
+                    description="",
+                    scraped_at=datetime.now().isoformat(timespec="seconds"),
+                ))
+                kept_on_page += 1
+
+            area_kept += kept_on_page
+            log(f"  PF {area_name} p{page_num}: kept {kept_on_page} of {len(listings)}")
+
+            if kept_on_page == 0:
+                zero_streak += 1
+                if zero_streak >= 2:
+                    break
+            else:
+                zero_streak = 0
+
+            # PF defaults to ~33/page; if we got less than 25, we're near the end
+            if len(listings) < 25:
+                break
+
+            time.sleep(1.2)
+
+        log(f"  PF {area_name}: TOTAL kept {area_kept}")
     return out
 
 
