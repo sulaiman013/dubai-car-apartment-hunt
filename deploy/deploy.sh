@@ -186,18 +186,32 @@ sleep 3
 $SUDO systemctl is-active --quiet dubai-hunt-api && ok "API service up" || warn "API not running — check 'journalctl -u dubai-hunt-api -n 50'"
 $SUDO systemctl is-active --quiet dubai-hunt-bot && ok "Bot service up" || warn "Bot not running — check 'journalctl -u dubai-hunt-bot -n 50'"
 
-# ─── 7. cron for daily scrapes ────────────────────────────────────────────────
-step "Setting up cron for daily scrapes (12:00 / 12:30 UTC = 18:00 / 18:30 BD)"
-CRON_CARS="0 12 * * * cd ${PROJECT_DIR} && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Search - Dubai UAE/scrape_dubai_cars.py' >> /var/log/dubai-cars.log 2>&1"
-# Apartments scraper uses Patchright with headless=False to bypass Bayut's bot wall.
-# On a headless VPS that requires a virtual display — xvfb-run wraps it transparently.
-CRON_APTS="30 12 * * * cd ${PROJECT_DIR} && /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Search - Dubai/scrape_apartments.py' >> /var/log/dubai-apts.log 2>&1"
+# ─── 7. cron for scheduled scrapes ────────────────────────────────────────────
+# Both scrapers use Patchright + invisible-headed Chromium to bypass bot walls,
+# so they need a virtual display (xvfb-run) on a headless VPS.
+#
+# Schedule: every 3 hours, apartments staggered by 30 min to avoid CPU collision.
+# APPEND_ONLY=1 ensures a failed scrape (e.g. transient bot wall) never deactivates
+# listings — it only adds new ones. The daily full-sweep at 12:00 UTC clears stale
+# entries by running WITHOUT APPEND_ONLY.
+step "Setting up cron — every 3 hours (append-only) + daily full sweep"
+CRON_CARS_3H="0  */3 * * * cd ${PROJECT_DIR} && APPEND_ONLY=1 /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Search - Dubai UAE/scrape_dubai_cars.py'      >> /var/log/dubai-cars.log 2>&1 && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Deals Frontend/prep_data.py'       >> /var/log/dubai-cars.log 2>&1"
+CRON_APTS_3H="30 */3 * * * cd ${PROJECT_DIR} && APPEND_ONLY=1 /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Search - Dubai/scrape_apartments.py' >> /var/log/dubai-apts.log 2>&1 && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Hunt Frontend/prep_data.py'  >> /var/log/dubai-apts.log 2>&1"
+# Daily full-sweep at 12:00 UTC (= 18:00 BD) — does mark_inactive on stale rows.
+CRON_CARS_DAILY="5  12 * * * cd ${PROJECT_DIR} && /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Search - Dubai UAE/scrape_dubai_cars.py'      >> /var/log/dubai-cars.log 2>&1 && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Deals Frontend/prep_data.py'       >> /var/log/dubai-cars.log 2>&1"
+CRON_APTS_DAILY="35 12 * * * cd ${PROJECT_DIR} && /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Search - Dubai/scrape_apartments.py' >> /var/log/dubai-apts.log 2>&1 && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Hunt Frontend/prep_data.py'  >> /var/log/dubai-apts.log 2>&1"
 
 $SUDO touch /var/log/dubai-cars.log /var/log/dubai-apts.log
 $SUDO chown "${DEPLOY_USER}:${DEPLOY_USER}" /var/log/dubai-cars.log /var/log/dubai-apts.log
 
-( crontab -l 2>/dev/null | grep -v 'dubai-hunt' || true ; echo "$CRON_CARS" ; echo "$CRON_APTS" ) | crontab -
-ok "Cron installed"
+(
+    crontab -l 2>/dev/null | grep -v 'dubai-hunt' | grep -v 'scrape_dubai_cars\|scrape_apartments' || true
+    echo "$CRON_CARS_3H"
+    echo "$CRON_APTS_3H"
+    echo "$CRON_CARS_DAILY"
+    echo "$CRON_APTS_DAILY"
+) | crontab -
+ok "Cron installed (4 entries: 2× every-3h append-only + 2× daily full-sweep)"
 
 # ─── 7b. SSH hardening + fail2ban ─────────────────────────────────────────────
 # Only disable password auth if the running SSH user has at least one authorized key —

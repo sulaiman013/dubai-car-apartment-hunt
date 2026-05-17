@@ -498,12 +498,15 @@ def save_outputs(rows: list[Apartment], final: bool = False) -> None:
         # Only deactivate stale listings on a full sweep, never on a targeted
         # run (env-var AREAS filter, if we ever add one).
         is_partial = bool(os.environ.get("AREAS", "").strip())
-        if final and not is_partial:
+        append_only = os.environ.get("APPEND_ONLY", "").strip() in ("1", "true", "yes")
+        if final and not is_partial and not append_only:
             seen = [r.ad_id for r in rows_sorted]
             deactivated = mark_inactive_apartments(seen) if seen else 0
             if deactivated: log(f"DB: marked {deactivated} stale apartments as inactive")
         elif final and is_partial:
             log("DB: skipping mark_inactive — partial run (AREAS filter set)")
+        elif final and append_only:
+            log("DB: skipping mark_inactive — APPEND_ONLY mode (preserves all rows)")
     except Exception as e:
         log(f"DB upsert failed (continuing with JSON save): {e}")
 

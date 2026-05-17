@@ -947,12 +947,15 @@ def save_outputs(rows: list[Listing], final: bool = False) -> None:
         # targeted scrape (e.g. BRANDS=maruti) would wrongly deactivate every
         # listing outside its scope.
         is_partial = bool(os.environ.get("BRANDS", "").strip())
-        if final and not is_partial:
+        append_only = os.environ.get("APPEND_ONLY", "").strip() in ("1", "true", "yes")
+        if final and not is_partial and not append_only:
             seen = [r.ad_id for r in rows_sorted]
             deactivated = mark_inactive_cars(seen) if seen else 0
             if deactivated: log(f"DB: marked {deactivated} stale cars as inactive")
         elif final and is_partial:
             log("DB: skipping mark_inactive — partial run (BRANDS filter set)")
+        elif final and append_only:
+            log("DB: skipping mark_inactive — APPEND_ONLY mode (preserves all rows)")
     except Exception as e:
         log(f"DB upsert failed (continuing with JSON save): {e}")
 
