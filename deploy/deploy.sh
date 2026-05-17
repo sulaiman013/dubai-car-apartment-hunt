@@ -37,10 +37,15 @@ echo
 
 # ─── 1. system packages ───────────────────────────────────────────────────────
 step "Installing system packages"
+export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -qq
-$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+# Note: chromium-browser is a transitional package on 22.04+; the real Chromium for ARM
+# is best installed via Patchright/Playwright (handled in Step 3). Skip apt's chromium-browser
+# (it's a snap shim) — we just need its system deps.
+$SUDO apt-get install -y -qq --no-install-recommends \
     python3 python3-pip python3-venv sqlite3 \
-    chromium-browser fonts-liberation libnss3 libatk-bridge2.0-0 libxss1 libgbm1 libasound2 \
+    fonts-liberation libnss3 libatk-bridge2.0-0 libxss1 libgbm1 libasound2 \
+    libxkbcommon0 libdrm2 libxcomposite1 libxdamage1 libxrandr2 libxshmfence1 \
     git curl ca-certificates iptables-persistent
 ok "apt packages installed"
 
