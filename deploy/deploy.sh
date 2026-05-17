@@ -52,7 +52,11 @@ ok "apt packages installed"
 # Node.js 24 via NodeSource (if not present or too old)
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | grep -oP '\d+' | head -1)" -lt 20 ]]; then
     step "Installing Node.js 24"
-    curl -fsSL https://deb.nodesource.com/setup_24.x | $SUDO -E bash -
+    if [[ "$DEPLOY_USER" == "root" ]]; then
+        curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+    else
+        curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    fi
     $SUDO apt-get install -y -qq nodejs
 fi
 ok "Node $(node -v), npm $(npm -v)"
