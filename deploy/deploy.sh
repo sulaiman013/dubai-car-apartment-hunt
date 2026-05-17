@@ -46,8 +46,14 @@ $SUDO apt-get install -y -qq --no-install-recommends \
     python3 python3-pip python3-venv sqlite3 \
     fonts-liberation libnss3 libatk-bridge2.0-0 libxss1 libgbm1 libasound2 \
     libxkbcommon0 libdrm2 libxcomposite1 libxdamage1 libxrandr2 libxshmfence1 \
-    git curl ca-certificates iptables-persistent
+    git curl ca-certificates iptables-persistent xvfb \
+    debian-keyring debian-archive-keyring apt-transport-https
 ok "apt packages installed"
+
+# Pinned public IP for cert hostname (sslip.io magic-DNS)
+PUB_IP=$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+SSLIP_HOST="${PUB_IP}.sslip.io"
+echo "  Public IP: $PUB_IP  →  HTTPS host: $SSLIP_HOST"
 
 # Node.js 24 via NodeSource (if not present or too old)
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | grep -oP '\d+' | head -1)" -lt 20 ]]; then
@@ -60,6 +66,18 @@ if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | grep -oP '\d+' | head -1
     $SUDO apt-get install -y -qq nodejs
 fi
 ok "Node $(node -v), npm $(npm -v)"
+
+# ─── 1b. Caddy (auto-HTTPS reverse proxy) ─────────────────────────────────────
+if ! command -v caddy >/dev/null 2>&1; then
+    step "Installing Caddy (auto-HTTPS)"
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | $SUDO gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        | $SUDO tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y -qq caddy
+fi
+ok "Caddy $(caddy version 2>&1 | head -1)"
 
 # ─── 2. iptables (Hostinger usually has none, Oracle has REJECT default) ──────
 step "Ensuring inbound ports 80/443 are open"
@@ -118,7 +136,7 @@ step "Installing systemd services"
 
 $SUDO tee /etc/systemd/system/dubai-hunt-api.service >/dev/null <<EOF
 [Unit]
-Description=Dubai Hunt FastAPI
+Description=Dubai Hunt FastAPI (internal — Caddy fronts 80/443)
 After=network.target
 
 [Service]
@@ -126,11 +144,10 @@ Type=simple
 User=${DEPLOY_USER}
 WorkingDirectory=${PROJECT_DIR}
 Environment=PYTHONUNBUFFERED=1
-ExecStart=${PROJECT_DIR}/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 80
+Environment=CORS_ORIGINS=https://${SSLIP_HOST},http://${SSLIP_HOST},http://${PUB_IP},http://127.0.0.1:8090,http://localhost:8090
+ExecStart=${PROJECT_DIR}/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8090
 Restart=on-failure
 RestartSec=5
-# Allow binding to port 80 without being root (only needed if User != root)
-AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
@@ -168,7 +185,9 @@ $SUDO systemctl is-active --quiet dubai-hunt-bot && ok "Bot service up" || warn 
 # ─── 7. cron for daily scrapes ────────────────────────────────────────────────
 step "Setting up cron for daily scrapes (12:00 / 12:30 UTC = 18:00 / 18:30 BD)"
 CRON_CARS="0 12 * * * cd ${PROJECT_DIR} && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Car Search - Dubai UAE/scrape_dubai_cars.py' >> /var/log/dubai-cars.log 2>&1"
-CRON_APTS="30 12 * * * cd ${PROJECT_DIR} && ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Search - Dubai/scrape_apartments.py' >> /var/log/dubai-apts.log 2>&1"
+# Apartments scraper uses Patchright with headless=False to bypass Bayut's bot wall.
+# On a headless VPS that requires a virtual display — xvfb-run wraps it transparently.
+CRON_APTS="30 12 * * * cd ${PROJECT_DIR} && /usr/bin/xvfb-run -a ${PROJECT_DIR}/.venv/bin/python -X utf8 'Apartment Search - Dubai/scrape_apartments.py' >> /var/log/dubai-apts.log 2>&1"
 
 $SUDO touch /var/log/dubai-cars.log /var/log/dubai-apts.log
 $SUDO chown "${DEPLOY_USER}:${DEPLOY_USER}" /var/log/dubai-cars.log /var/log/dubai-apts.log
@@ -222,23 +241,58 @@ EOF
 $SUDO systemctl enable --now fail2ban >/dev/null 2>&1 || true
 $SUDO systemctl is-active --quiet fail2ban && ok "fail2ban active (sshd jail enabled)" || warn "fail2ban not active — check 'journalctl -u fail2ban -n 30'"
 
+# ─── 7c. Caddy reverse proxy + auto-HTTPS ─────────────────────────────────────
+step "Configuring Caddy reverse proxy + Let's Encrypt for ${SSLIP_HOST}"
+$SUDO tee /etc/caddy/Caddyfile >/dev/null <<EOF
+# Managed by deploy.sh — Dubai Hunt
+{
+    # global options
+    email admin@${SSLIP_HOST}
+}
+
+# HTTPS site (Caddy auto-issues + auto-renews Let's Encrypt cert)
+${SSLIP_HOST} {
+    encode gzip
+    reverse_proxy 127.0.0.1:8090
+}
+
+# Bare-IP HTTP — redirect to HTTPS host so old http://IP/ links still work
+http://${PUB_IP} {
+    redir https://${SSLIP_HOST}{uri} permanent
+}
+EOF
+$SUDO systemctl enable caddy >/dev/null 2>&1
+$SUDO systemctl restart caddy
+sleep 4
+$SUDO systemctl is-active --quiet caddy && ok "Caddy active (TLS for ${SSLIP_HOST} provisioning)" \
+    || warn "Caddy not active — check 'journalctl -u caddy -n 40'"
+
 # ─── 8. health check ──────────────────────────────────────────────────────────
 step "Health check"
-sleep 3
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || echo "000")
-[[ "$HTTP_CODE" == "200" ]] && ok "API responding on :80 (HTTP 200)" || warn "API not responding on :80 (got HTTP $HTTP_CODE) — try 'sudo journalctl -u dubai-hunt-api -n 30'"
+sleep 5
+# Internal probe — bypasses Caddy
+HTTP_INT=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/api/health || echo "000")
+[[ "$HTTP_INT" == "200" ]] && ok "FastAPI internal :8090 healthy" || warn "FastAPI internal not responding (got $HTTP_INT)"
+# External probe via Caddy on the HTTPS host. -k tolerates the brief window before cert lands.
+HTTP_EXT=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 15 "https://${SSLIP_HOST}/" || echo "000")
+if [[ "$HTTP_EXT" == "200" ]]; then
+    ok "HTTPS healthy at https://${SSLIP_HOST}/"
+else
+    warn "HTTPS not 200 yet (got $HTTP_EXT) — Let's Encrypt cert provisioning can take up to 90s; retry in a minute"
+fi
 
-PUBIP=$(curl -s --max-time 3 ifconfig.me || echo "<your-ip>")
 echo
 echo "════════════════════════════════════════════════════════════════"
 echo "  ✅  Deploy complete"
 echo "════════════════════════════════════════════════════════════════"
 echo
-echo "  Landing:    http://${PUBIP}/"
-echo "  Cars:       http://${PUBIP}/Car%20Deals%20Frontend/"
-echo "  Apartments: http://${PUBIP}/Apartment%20Hunt%20Frontend/"
-echo "  Ops:        http://${PUBIP}/Ops%20Dashboard/"
-echo "  API docs:   http://${PUBIP}/docs"
+echo "  Landing:    https://${SSLIP_HOST}/"
+echo "  Cars:       https://${SSLIP_HOST}/Car%20Deals%20Frontend/"
+echo "  Apartments: https://${SSLIP_HOST}/Apartment%20Hunt%20Frontend/"
+echo "  Ops:        https://${SSLIP_HOST}/Ops%20Dashboard/"
+echo "  API docs:   https://${SSLIP_HOST}/docs"
+echo
+echo "  (http://${PUB_IP}/... still works, auto-redirects to HTTPS)"
 echo
 echo "  Manage:"
 echo "    systemctl status dubai-hunt-api dubai-hunt-bot"
