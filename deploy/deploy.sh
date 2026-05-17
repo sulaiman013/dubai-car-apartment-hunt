@@ -101,6 +101,18 @@ if [[ "$ROW_COUNT" -eq 0 ]]; then
 fi
 ok "DB ready ($ROW_COUNT cars rows pre-existing)"
 
+# ─── 5b. regenerate data.js for cars + apartments dashboards ──────────────────
+step "Regenerating dashboard data.js files"
+.venv/bin/python -X utf8 "Car Deals Frontend/prep_data.py" 2>&1 | tail -3 || warn "cars prep_data.py failed"
+.venv/bin/python -X utf8 "Apartment Hunt Frontend/prep_data.py" 2>&1 | tail -3 || warn "apts prep_data.py failed"
+ok "data.js refreshed"
+
+# ─── 5c. tighten secret + DB permissions ──────────────────────────────────────
+step "Tightening file permissions"
+chmod 600 "${PROJECT_DIR}/Telegram Bot/.env" 2>/dev/null || true
+chmod 600 "${PROJECT_DIR}/db/dubai_hunt.db" 2>/dev/null || true
+ok "Secrets + DB are now 0600"
+
 # ─── 6. systemd units ─────────────────────────────────────────────────────────
 step "Installing systemd services"
 
@@ -161,6 +173,48 @@ $SUDO chown "${DEPLOY_USER}:${DEPLOY_USER}" /var/log/dubai-cars.log /var/log/dub
 
 ( crontab -l 2>/dev/null | grep -v 'dubai-hunt' || true ; echo "$CRON_CARS" ; echo "$CRON_APTS" ) | crontab -
 ok "Cron installed"
+
+# ─── 7b. SSH hardening + fail2ban ─────────────────────────────────────────────
+# Only disable password auth if the running SSH user has at least one authorized key —
+# otherwise we'd lock the operator out of the box.
+step "SSH hardening + fail2ban"
+AUTH_KEYS="${DEPLOY_HOME}/.ssh/authorized_keys"
+if [[ -s "$AUTH_KEYS" ]]; then
+    SSHD_CFG=/etc/ssh/sshd_config
+    if grep -qE '^[[:space:]]*PasswordAuthentication[[:space:]]+yes' "$SSHD_CFG" 2>/dev/null; then
+        $SUDO sed -i.bak -E 's/^[[:space:]]*PasswordAuthentication[[:space:]]+yes/PasswordAuthentication no/' "$SSHD_CFG"
+        ok "PasswordAuthentication → no (backup at sshd_config.bak)"
+    elif ! grep -qE '^[[:space:]]*PasswordAuthentication' "$SSHD_CFG" 2>/dev/null; then
+        echo "PasswordAuthentication no" | $SUDO tee -a "$SSHD_CFG" >/dev/null
+        ok "PasswordAuthentication explicitly set to no"
+    else
+        ok "PasswordAuthentication already disabled"
+    fi
+    # Also disable challenge/response, which can bypass the password flag on some distros
+    if grep -qE '^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes' "$SSHD_CFG" 2>/dev/null; then
+        $SUDO sed -i -E 's/^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes/KbdInteractiveAuthentication no/' "$SSHD_CFG"
+    fi
+    $SUDO systemctl reload ssh 2>/dev/null || $SUDO systemctl reload sshd 2>/dev/null || true
+else
+    warn "No SSH key in $AUTH_KEYS — leaving PasswordAuthentication alone to avoid lockout"
+fi
+
+# fail2ban: auto-ban brute-forcers
+if ! command -v fail2ban-client >/dev/null 2>&1; then
+    $SUDO apt-get install -y -qq fail2ban >/dev/null
+fi
+$SUDO tee /etc/fail2ban/jail.local >/dev/null <<'EOF'
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled = true
+EOF
+$SUDO systemctl enable --now fail2ban >/dev/null 2>&1 || true
+$SUDO systemctl is-active --quiet fail2ban && ok "fail2ban active (sshd jail enabled)" || warn "fail2ban not active — check 'journalctl -u fail2ban -n 30'"
 
 # ─── 8. health check ──────────────────────────────────────────────────────────
 step "Health check"

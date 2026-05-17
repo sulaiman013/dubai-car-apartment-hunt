@@ -46,10 +46,14 @@ app = FastAPI(
     description="SQLite-backed REST API over scraped Dubai cars + apartments.",
 )
 
-# CORS: allow the dashboards (file:// or tunnel) to call us.
+# CORS: restrict to explicit origins (env-driven). Same-origin calls from the
+# bundled dashboards don't need CORS at all; this matters only for file:// or
+# tunnel access. Override via CORS_ORIGINS=https://a.example,https://b.example
+_default_origins = "http://127.0.0.1:8090,http://localhost:8090,http://31.97.71.84"
+_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # personal-use; harmless for read-only
+    allow_origins=_origins,
     allow_methods=["GET"],
     allow_headers=["*"],
 )
