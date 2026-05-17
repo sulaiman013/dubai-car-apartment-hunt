@@ -424,8 +424,9 @@ def scrape_propertyfinder(page) -> list[Apartment]:
                 if period != "yearly" or price <= 0 or price > MAX_PRICE_AED:
                     continue
 
-                beds = prop.get("bedrooms")
-                if not isinstance(beds, int) or beds != 1:
+                # PF returns bedrooms as a STRING ('1', '2', '0' for studio) — coerce
+                beds = _coerce_int(prop.get("bedrooms"))
+                if beds != 1:
                     continue
 
                 # Slug-search guarantees the location, but double-check the property's
