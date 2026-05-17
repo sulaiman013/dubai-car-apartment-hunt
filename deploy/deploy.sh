@@ -100,6 +100,10 @@ source .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q fastapi uvicorn[standard] patchright playwright beautifulsoup4 lxml
 python3 -m patchright install chromium >/dev/null 2>&1 || python3 -m playwright install chromium >/dev/null 2>&1
+# Playwright/Patchright ship Chromium binaries but require system shared libs
+# (libcups2, libpango, libnspr4, etc.). install-deps knows the canonical set.
+python3 -m playwright install-deps chromium >/dev/null 2>&1 || \
+    $SUDO apt-get install -y -qq libcups2 libpango-1.0-0 libcairo2 libnspr4 >/dev/null 2>&1 || true
 ok "Python env ready"
 
 # ─── 4. node deps for the bot ─────────────────────────────────────────────────
