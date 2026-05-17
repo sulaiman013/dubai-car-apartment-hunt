@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dubai Car Hunt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- =========================  TOP STRIP  ========================= -->
+  <header class="top">
+    <div class="top__inner">
+      <div class="brand">
+        <span class="brand__dot" aria-hidden="true"></span>
+        <span class="brand__name">Dubai Car Hunt</span>
+        <span class="brand__sep" aria-hidden="true">/</span>
+        <span class="brand__sub">under 20K · sunroof first</span>
+      </div>
+      <nav class="metaline" aria-label="Inventory summary">
+        <span class="metaline__item"><span id="stat-total" class="num">—</span><span class="lbl">listings</span></span>
+        <span class="metaline__sep" aria-hidden="true">·</span>
+        <span class="metaline__item metaline__item--sun"><span id="stat-sunroof" class="num">—</span><span class="lbl">sunroof</span></span>
+        <span class="metaline__sep" aria-hidden="true">·</span>
+        <span class="metaline__item"><span id="stat-budget" class="num">—</span><span class="lbl">≤ 20K</span></span>
+        <span class="metaline__sep" aria-hidden="true">·</span>
+        <span class="metaline__item metaline__item--ghost"><span id="stat-updated">refreshed —</span></span>
+        <span class="metaline__sep" aria-hidden="true">·</span>
+        <a class="metaline__item metaline__item--ghost" href="../Apartment%20Hunt%20Frontend/index.html" style="text-decoration:none">→ Apartments</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- =========================  TOOLBAR  ========================= -->
+  <div class="toolbar">
+    <div class="toolbar__inner">
+      <!-- Search -->
+      <label class="search" aria-label="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="q" type="search" placeholder="Search title, location, feature…" autocomplete="off" />
+        <kbd class="kbd" id="kbd-hint">/</kbd>
+      </label>
+
+      <div class="toolbar__divider" aria-hidden="true"></div>
+
+      <!-- Selects -->
+      <div class="select select--ghost">
+        <select id="brand" aria-label="Brand">
+          <option value="">All brands</option>
+          <option>Hyundai Elantra</option>
+          <option>Honda Civic</option>
+          <option>Nissan Sunny</option>
+          <option>Toyota Corolla</option>
+          <option>Toyota Yaris</option>
+          <option>Toyota Camry</option>
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </div>
+
+      <div class="select select--ghost">
+        <select id="source" aria-label="Source">
+          <option value="">All sources</option>
+          <option>Dubizzle</option>
+          <option>DubiCars</option>
+          <option>YallaMotor</option>
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </div>
+
+      <!-- Range popovers (compact) -->
+      <details class="popover" id="pop-price">
+        <summary class="popover__btn" aria-label="Max price">
+          <span class="popover__k">Max</span><span class="popover__v num" id="price-pill">Any</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </summary>
+        <div class="popover__body">
+          <div class="popover__head"><span class="lbl">Max price</span><span class="num" id="price-val">AED any</span></div>
+          <input id="price" type="range" min="5000" max="30000" step="500" value="30000" />
+          <div class="popover__ticks"><span>5K</span><span>10K</span><span>15K</span><span>20K</span><span>25K</span><span>any</span></div>
+        </div>
+      </details>
+
+      <details class="popover" id="pop-score">
+        <summary class="popover__btn" aria-label="Min score">
+          <span class="popover__k">Score</span><span class="popover__v num" id="score-pill">0+</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </summary>
+        <div class="popover__body">
+          <div class="popover__head"><span class="lbl">Minimum score</span><span class="num" id="score-val">0</span></div>
+          <input id="score" type="range" min="0" max="100" step="1" value="0" />
+          <div class="popover__ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+      </details>
+
+      <div class="toolbar__spacer"></div>
+
+      <!-- Sort -->
+      <div class="select select--ghost">
+        <select id="sort" aria-label="Sort">
+          <option value="sunroof">Sunroof, then score</option>
+          <option value="score">Best score</option>
+          <option value="price-asc">Price · low → high</option>
+          <option value="price-desc">Price · high → low</option>
+          <option value="year-desc">Newest year</option>
+          <option value="km-asc">Lowest mileage</option>
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </div>
+
+      <!-- View toggle -->
+      <div class="seg" role="tablist" aria-label="View">
+        <button class="seg__btn is-active" data-view="list" aria-label="List view" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <button class="seg__btn" data-view="grid" aria-label="Grid view" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="13" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="4" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Chips row -->
+    <div class="toolbar__chips">
+      <button class="chip chip--sun" data-chip="sunroof" type="button">
+        <span class="chip__dot" aria-hidden="true"></span>Sunroof only
+      </button>
+      <button class="chip" data-chip="budget" type="button">≤ 20K AED</button>
+      <button class="chip" data-chip="lowkm" type="button">Low km (&lt; 150k)</button>
+      <button class="chip" data-chip="top20" type="button">Top 20</button>
+      <button class="chip" data-chip="owner" type="button">Owner only</button>
+      <span class="toolbar__spacer"></span>
+      <button class="textbtn" id="chip-clear" type="button">Clear filters</button>
+    </div>
+  </div>
+
+  <!-- =========================  FEED  ========================= -->
+  <main class="page">
+    <div class="feedhead">
+      <div class="feedhead__count">
+        <span class="num num--lg" id="count-shown">0</span>
+        <span class="dim">of</span>
+        <span class="num" id="count-total">0</span>
+        <span class="dim">listings</span>
+        <span class="feedhead__pipe" aria-hidden="true"></span>
+        <span class="feedhead__sun"><span class="chip__dot" aria-hidden="true"></span><span id="count-sun" class="num">0</span><span class="dim"> with sunroof</span></span>
+      </div>
+      <div class="feedhead__legend">
+        <span class="leg"><span class="leg__num" style="color:var(--tier-excellent)">80</span>excellent</span>
+        <span class="leg"><span class="leg__num" style="color:var(--tier-good)">65</span>good</span>
+        <span class="leg"><span class="leg__num" style="color:var(--tier-fair)">50</span>fair</span>
+        <span class="leg"><span class="leg__num" style="color:var(--tier-poor)">·</span>below</span>
+      </div>
+    </div>
+
+    <!-- LIST view -->
+    <section id="list" class="list" aria-label="Listings (list view)"></section>
+
+    <!-- GRID view -->
+    <section id="grid" class="grid" aria-label="Listings (grid view)" hidden></section>
+
+    <!-- Empty -->
+    <section id="empty" class="empty" hidden>
+      <div class="empty__rule"></div>
+      <h3>No listings match.</h3>
+      <p>Try widening the price range or clearing chips. Fresh inventory daily at 18:00 BD.</p>
+      <button class="btn btn--ghost" id="empty-clear" type="button">Clear filters</button>
+    </section>
+
+    <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+  </main>
+
+  <!-- =========================  MODAL  ========================= -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <article class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="m-title">
+      <header class="modal__head">
+        <div>
+          <div class="modal__eyebrow" id="m-brand">—</div>
+          <h2 id="m-title">—</h2>
+          <div class="modal__loc" id="m-loc">—</div>
+        </div>
+        <button class="iconbtn" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <div class="modal__split">
+        <div class="modal__media" id="m-media"></div>
+        <div class="modal__side">
+          <div class="modal__pricerow">
+            <div class="modal__priceLabel">Asking price</div>
+            <div class="modal__price"><span class="ccy">AED</span><span class="num" id="m-price">—</span></div>
+          </div>
+          <div class="modal__scoreLine">
+            <div>
+              <div class="lbl">Overall score</div>
+              <div class="modal__bigscore num" id="m-score">—</div>
+            </div>
+            <div class="modal__ratingTag" id="m-rating">—</div>
+          </div>
+
+          <dl class="kv" id="m-kv"></dl>
+
+          <a id="m-link" class="btn btn--primary" target="_blank" rel="noopener noreferrer">
+            Open original listing
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <section class="modal__sec">
+        <h4>Score breakdown</h4>
+        <div class="bars" id="m-bars"></div>
+      </section>
+
+      <section class="modal__sec">
+        <h4>Features</h4>
+        <div class="featpills" id="m-feat"></div>
+      </section>
+
+      <section class="modal__sec">
+        <h4>Seller description</h4>
+        <p class="modal__desc" id="m-desc">—</p>
+      </section>
+    </article>
+  </div>
+
+  <footer class="foot">
+    <span>Vanilla · no tracking · scraped daily 18:00 BD</span>
+    <span class="foot__kbd"><kbd class="kbd">/</kbd> search · <kbd class="kbd">G</kbd> grid · <kbd class="kbd">L</kbd> list · <kbd class="kbd">Esc</kbd> close</span>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

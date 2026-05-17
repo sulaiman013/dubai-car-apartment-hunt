@@ -1,0 +1,21 @@
+# Files NOT to upload to the VM
+.auth/
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+tests/_screenshots*/
+*.bak
+*.shrunken
+*.log
+*.err
+_run.out
+_run.err
+bot.log
+bot.err
+api.log
+api.err
+scrape_log.txt
+UI demo/
+car UI.zip
+.git/

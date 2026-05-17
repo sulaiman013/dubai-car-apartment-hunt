@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dubai Hunt — Ops Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="top__inner">
+    <div class="brand">
+      <span class="brand__dot" aria-hidden="true"></span>
+      <span class="brand__name">Ops Dashboard</span>
+      <span class="brand__sep" aria-hidden="true">/</span>
+      <span class="brand__sub">inventory · pipeline health</span>
+    </div>
+    <nav class="metaline" aria-label="Live status">
+      <span class="metaline__item"><span id="status-dot" class="dot-ok"></span><span id="status-text" class="lbl">checking…</span></span>
+      <span class="metaline__sep" aria-hidden="true">·</span>
+      <span class="metaline__item metaline__item--ghost"><span id="last-refresh">refreshed —</span></span>
+      <span class="metaline__sep" aria-hidden="true">·</span>
+      <button id="refresh-btn" class="iconbtn" title="Refresh now">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.3M21 5v5h-5M21 12a9 9 0 0 1-15.5 6.3M3 19v-5h5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <a class="metaline__item metaline__item--ghost" href="../index.html" style="text-decoration:none">← Home</a>
+    </nav>
+  </div>
+</header>
+
+<!-- TAB BAR -->
+<nav class="tabs">
+  <button class="tab is-active" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="cars">Cars</button>
+  <button class="tab" data-tab="apartments">Apartments</button>
+  <button class="tab" data-tab="pipeline">Pipeline</button>
+</nav>
+
+<main class="page">
+
+<!-- ─────── TAB: OVERVIEW ─────────────────────────────────────────────────── -->
+<section class="panel" data-panel="overview">
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi__label">CARS — TOTAL</div>
+      <div class="kpi__value num" id="kpi-cars-total">—</div>
+      <div class="kpi__sub"><span id="kpi-cars-active">—</span> active · <span id="kpi-cars-inactive">—</span> inactive</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">CARS — WITH SUNROOF</div>
+      <div class="kpi__value num kpi__value--sun" id="kpi-cars-sunroof">—</div>
+      <div class="kpi__sub"><span id="kpi-cars-under-20k">—</span> priced ≤ AED 20K</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">APARTMENTS — TOTAL</div>
+      <div class="kpi__value num" id="kpi-apt-total">—</div>
+      <div class="kpi__sub"><span id="kpi-apt-within-budget">—</span> within budget · cheapest <span class="num" id="kpi-apt-cheapest">—</span> AED/mo</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">LAST REFRESH</div>
+      <div class="kpi__value kpi__value--small num" id="kpi-last-refresh">—</div>
+      <div class="kpi__sub">cars: <span id="kpi-cars-last">—</span> · apts: <span id="kpi-apt-last">—</span></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Cars by source</h3>
+      <div class="chart-wrap"><canvas id="chart-cars-source"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Apartments by commute tier</h3>
+      <div class="chart-wrap"><canvas id="chart-apt-tier"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Cars price distribution (AED)</h3>
+      <div class="chart-wrap"><canvas id="chart-cars-price"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Apartments monthly price distribution</h3>
+      <div class="chart-wrap"><canvas id="chart-apt-price"></canvas></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ─────── TAB: CARS ─────────────────────────────────────────────────────── -->
+<section class="panel" data-panel="cars" hidden>
+  <div class="grid2">
+    <div class="card">
+      <h3>Top brands</h3>
+      <div class="chart-wrap chart-wrap--tall"><canvas id="chart-cars-brand"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Sunroof split</h3>
+      <div class="chart-wrap"><canvas id="chart-cars-sun"></canvas></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Year distribution</h3>
+      <div class="chart-wrap"><canvas id="chart-cars-year"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Mileage distribution (km)</h3>
+      <div class="chart-wrap"><canvas id="chart-cars-km"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Brand table (active listings)</h3>
+    <div class="table-wrap"><table id="table-brands"><thead><tr><th>Brand</th><th class="num-cell">Count</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- ─────── TAB: APARTMENTS ───────────────────────────────────────────────── -->
+<section class="panel" data-panel="apartments" hidden>
+  <div class="grid2">
+    <div class="card">
+      <h3>By area</h3>
+      <div class="chart-wrap chart-wrap--tall"><canvas id="chart-apt-area"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>By source</h3>
+      <div class="chart-wrap"><canvas id="chart-apt-source"></canvas></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Size distribution (sqft)</h3>
+      <div class="chart-wrap"><canvas id="chart-apt-size"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Commute tier vs price (avg)</h3>
+      <div class="chart-wrap"><canvas id="chart-apt-tier-price"></canvas></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Area table (active listings)</h3>
+    <div class="table-wrap"><table id="table-areas"><thead><tr><th>Area</th><th class="num-cell">Count</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- ─────── TAB: PIPELINE ─────────────────────────────────────────────────── -->
+<section class="panel" data-panel="pipeline" hidden>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi__label">CARS — LAST SCRAPED</div>
+      <div class="kpi__value kpi__value--small" id="pipe-cars-last">—</div>
+      <div class="kpi__sub"><span id="pipe-cars-new24h">—</span> new in last 24h</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">APARTMENTS — LAST SCRAPED</div>
+      <div class="kpi__value kpi__value--small" id="pipe-apt-last">—</div>
+      <div class="kpi__sub"><span id="pipe-apt-new24h">—</span> new in last 24h</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">API HEALTH</div>
+      <div class="kpi__value kpi__value--small" id="pipe-api-health">—</div>
+      <div class="kpi__sub">http://127.0.0.1:8090</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">DB FILE</div>
+      <div class="kpi__value kpi__value--small num" id="pipe-db-status">—</div>
+      <div class="kpi__sub">db/dubai_hunt.db</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Listing freshness — cars</h3>
+    <div class="chart-wrap"><canvas id="chart-cars-freshness"></canvas></div>
+    <p class="card__hint">How recently each listing was last seen by the scraper. Older = staler data.</p>
+  </div>
+
+  <div class="card">
+    <h3>Source health (cars)</h3>
+    <div class="chart-wrap"><canvas id="chart-cars-source-bar"></canvas></div>
+    <p class="card__hint">Counts per source. A source going to zero is the first sign of a bot wall.</p>
+  </div>
+
+  <div class="card">
+    <h3>Recent scrape runs</h3>
+    <div class="table-wrap">
+      <table id="table-runs"><thead><tr><th>When</th><th>Kind</th><th>Status</th><th class="num-cell">Duration</th><th class="num-cell">Rows</th><th>Notes</th></tr></thead><tbody></tbody></table>
+    </div>
+    <p class="card__hint" id="runs-hint"></p>
+  </div>
+
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>Dubai Hunt · ops dashboard · auto-refresh every 60 s</span>
+  <span class="foot__kbd"><kbd class="kbd">R</kbd> refresh now</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

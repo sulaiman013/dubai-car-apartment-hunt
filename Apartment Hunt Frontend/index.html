@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dubai Apartment Hunt — 1BHK near DAFZA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="top">
+  <div class="top__inner">
+    <div class="brand">
+      <span class="brand__dot" aria-hidden="true"></span>
+      <span class="brand__name">Apartment Hunt</span>
+      <span class="brand__sep" aria-hidden="true">/</span>
+      <span class="brand__sub">1BHK furnished &middot; DAFZA-adjacent &middot; &le; AED 6K/mo</span>
+    </div>
+    <nav class="metaline" aria-label="Inventory summary">
+      <span class="metaline__item"><span id="stat-total" class="num">&mdash;</span><span class="lbl">listings</span></span>
+      <span class="metaline__sep" aria-hidden="true">&middot;</span>
+      <span class="metaline__item metaline__item--tier1"><span id="stat-tier1" class="num">&mdash;</span><span class="lbl">tier 1</span></span>
+      <span class="metaline__sep" aria-hidden="true">&middot;</span>
+      <span class="metaline__item"><span id="stat-budget" class="num">&mdash;</span><span class="lbl">&le; 6K/mo</span></span>
+      <span class="metaline__sep" aria-hidden="true">&middot;</span>
+      <span class="metaline__item metaline__item--ghost"><span id="stat-updated">refreshed &mdash;</span></span>
+      <span class="metaline__sep" aria-hidden="true">&middot;</span>
+      <a class="metaline__item metaline__item--ghost" href="../Car%20Deals%20Frontend/index.html" style="text-decoration:none">&rarr; Cars</a>
+    </nav>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar__inner">
+    <label class="search" aria-label="Search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="Search area, building, broker, amenity&hellip;" autocomplete="off" />
+      <kbd class="kbd" id="kbd-hint">/</kbd>
+    </label>
+
+    <div class="toolbar__divider" aria-hidden="true"></div>
+
+    <div class="select select--ghost">
+      <select id="area" aria-label="Area">
+        <option value="">All areas</option>
+      </select>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="select select--ghost">
+      <select id="source" aria-label="Source">
+        <option value="">All sources</option>
+        <option>Bayut</option>
+        <option>PropertyFinder</option>
+      </select>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    </div>
+
+    <details class="popover" id="pop-price">
+      <summary class="popover__btn" aria-label="Max monthly">
+        <span class="popover__k">Max/mo</span><span class="popover__v num" id="price-pill">6K</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </summary>
+      <div class="popover__body">
+        <div class="popover__head"><span class="lbl">Max monthly</span><span class="num" id="price-val">AED 6,000</span></div>
+        <input id="price" type="range" min="2000" max="8000" step="250" value="6000" />
+        <div class="popover__ticks"><span>2K</span><span>4K</span><span>6K</span><span>8K</span></div>
+      </div>
+    </details>
+
+    <details class="popover" id="pop-tier">
+      <summary class="popover__btn" aria-label="Max commute tier">
+        <span class="popover__k">Commute</span><span class="popover__v num" id="tier-pill">any</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </summary>
+      <div class="popover__body">
+        <div class="popover__head"><span class="lbl">Max commute tier</span><span class="num" id="tier-val">any</span></div>
+        <input id="tier" type="range" min="1" max="4" step="1" value="4" />
+        <div class="popover__ticks"><span>1 (5-10m)</span><span>2 (10-15m)</span><span>3 (15-20m)</span><span>4 (20-30m)</span></div>
+      </div>
+    </details>
+
+    <div class="toolbar__spacer"></div>
+
+    <div class="select select--ghost">
+      <select id="sort" aria-label="Sort">
+        <option value="tier">Closest to DAFZA</option>
+        <option value="price-asc">Price · low &rarr; high</option>
+        <option value="price-desc">Price · high &rarr; low</option>
+        <option value="size-desc">Largest first</option>
+        <option value="score">Best overall score</option>
+      </select>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="seg" role="tablist" aria-label="View">
+      <button class="seg__btn is-active" data-view="list" aria-label="List view" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <button class="seg__btn" data-view="grid" aria-label="Grid view" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="13" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="4" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="toolbar__chips">
+    <button class="chip chip--tier1" data-chip="tier1" type="button">
+      <span class="chip__dot" aria-hidden="true"></span>Tier 1 only
+    </button>
+    <button class="chip" data-chip="under5k" type="button">&le; 5K AED/mo</button>
+    <button class="chip" data-chip="parking" type="button">Parking</button>
+    <button class="chip" data-chip="gym" type="button">Gym/Pool</button>
+    <button class="chip" data-chip="largesize" type="button">&ge; 600 sqft</button>
+    <span class="toolbar__spacer"></span>
+    <button class="textbtn" id="chip-clear" type="button">Clear filters</button>
+  </div>
+</div>
+
+<main class="page">
+  <div class="feedhead">
+    <div class="feedhead__count">
+      <span class="num num--lg" id="count-shown">0</span>
+      <span class="dim">of</span>
+      <span class="num" id="count-total">0</span>
+      <span class="dim">apartments</span>
+      <span class="feedhead__pipe" aria-hidden="true"></span>
+      <span class="feedhead__sun"><span class="chip__dot" aria-hidden="true"></span><span id="count-tier1" class="num">0</span><span class="dim"> DAFZA-adjacent</span></span>
+    </div>
+    <div class="feedhead__legend">
+      <span class="leg"><span class="leg__num" style="color:var(--tier-excellent)">1</span>5-10m</span>
+      <span class="leg"><span class="leg__num" style="color:var(--tier-good)">2</span>10-15m</span>
+      <span class="leg"><span class="leg__num" style="color:var(--tier-fair)">3</span>15-20m</span>
+      <span class="leg"><span class="leg__num" style="color:var(--tier-poor)">4</span>20-30m</span>
+    </div>
+  </div>
+
+  <section id="list" class="list" aria-label="Listings (list view)"></section>
+  <section id="grid" class="grid" aria-label="Listings (grid view)" hidden></section>
+
+  <section id="empty" class="empty" hidden>
+    <div class="empty__rule"></div>
+    <h3>No apartments match.</h3>
+    <p>Try widening price or commute tier, or clear filters.</p>
+    <button class="btn btn--ghost" id="empty-clear" type="button">Clear filters</button>
+  </section>
+
+  <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <article class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="m-title">
+    <header class="modal__head">
+      <div>
+        <div class="modal__eyebrow" id="m-area">&mdash;</div>
+        <h2 id="m-title">&mdash;</h2>
+        <div class="modal__loc" id="m-loc">&mdash;</div>
+      </div>
+      <button class="iconbtn" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <div class="modal__split">
+      <div class="modal__media" id="m-media"></div>
+      <div class="modal__side">
+        <div class="modal__pricerow">
+          <div class="modal__priceLabel">Monthly</div>
+          <div class="modal__price"><span class="ccy">AED</span><span class="num" id="m-monthly">&mdash;</span></div>
+        </div>
+        <div class="modal__scoreLine">
+          <div>
+            <div class="lbl">Yearly</div>
+            <div class="modal__bigscore num" id="m-yearly">&mdash;</div>
+          </div>
+          <div class="modal__ratingTag" id="m-tier">&mdash;</div>
+        </div>
+
+        <dl class="kv" id="m-kv"></dl>
+
+        <a id="m-link" class="btn btn--primary" target="_blank" rel="noopener noreferrer">
+          Open original listing
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <section class="modal__sec">
+      <h4>Score breakdown</h4>
+      <div class="bars" id="m-bars"></div>
+    </section>
+
+    <section class="modal__sec">
+      <h4>Amenities</h4>
+      <div class="featpills" id="m-feat"></div>
+    </section>
+
+    <section class="modal__sec">
+      <h4>Description</h4>
+      <p class="modal__desc" id="m-desc">&mdash;</p>
+    </section>
+  </article>
+</div>
+
+<footer class="foot">
+  <span>Vanilla &middot; scraped daily at 18:00 BD &middot; Bayut + PropertyFinder</span>
+  <span class="foot__kbd"><kbd class="kbd">/</kbd> search &middot; <kbd class="kbd">G</kbd> grid &middot; <kbd class="kbd">L</kbd> list &middot; <kbd class="kbd">Esc</kbd> close</span>
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

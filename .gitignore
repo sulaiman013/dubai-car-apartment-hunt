@@ -1,0 +1,82 @@
+# ────────────────────────────────────────────────────────────────
+#  Dubai Hunt — gitignore
+#  KEEP OUT of version control: secrets, data, deps, logs, caches.
+# ────────────────────────────────────────────────────────────────
+
+# ── Secrets (NEVER commit) ──────────────────────────────────────
+.env
+**/.env
+!*.env.example
+!**/.env.example
+*.env.local
+*.pem
+*.key
+.ssh/
+
+# ── Local data / SQLite DB ──────────────────────────────────────
+db/dubai_hunt.db
+db/dubai_hunt.db-shm
+db/dubai_hunt.db-wal
+db/dubai_hunt.db.bak
+
+# ── Scraped data snapshots (regen-able, large, mutable) ─────────
+**/dubai_cars.json
+**/dubai_cars.csv
+**/apartments.json
+**/apartments.csv
+**/*.json.bak
+**/*.json.shrunken
+**/data.js
+
+# ── Logs / process output ───────────────────────────────────────
+*.log
+*.err
+**/scrape_log.txt
+**/_run.out
+**/_run.err
+**/bot.log
+**/bot.err
+**/api.log
+**/api.err
+
+# ── Python ──────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ── Node ────────────────────────────────────────────────────────
+**/node_modules/
+**/package-lock.json
+**/npm-debug.log*
+
+# ── Playwright / Patchright auth folders (Bayut session) ────────
+**/.auth/
+**/.cache/
+playwright-report/
+test-results/
+
+# ── Test screenshots ────────────────────────────────────────────
+tests/_screenshots*/
+
+# ── IDE / OS ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── Old artifacts kept for reference but not for git ────────────
+UI demo/
+car UI.zip
+_backup_pre_uidemo/
+
+# ── Backups created by tunnel/auth ──────────────────────────────
+*.bak
+*.shrunken
+
+# ── Claude session files (per-project, not source) ──────────────
+.claude/
