@@ -80,3 +80,6 @@ _backup_pre_uidemo/
 
 # ── Claude session files (per-project, not source) ──────────────
 .claude/
+
+# ── deploy/ scratch probes (one-off local scripts, not part of the deploy) ──
+deploy/_*
