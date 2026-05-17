@@ -157,8 +157,10 @@ WantedBy=multi-user.target
 EOF
 
 $SUDO systemctl daemon-reload
-$SUDO systemctl enable --now dubai-hunt-api.service
-$SUDO systemctl enable --now dubai-hunt-bot.service
+$SUDO systemctl enable dubai-hunt-api.service dubai-hunt-bot.service >/dev/null 2>&1
+# Always restart so freshly-pulled code (and updated unit files) take effect
+$SUDO systemctl restart dubai-hunt-api.service
+$SUDO systemctl restart dubai-hunt-bot.service
 sleep 3
 $SUDO systemctl is-active --quiet dubai-hunt-api && ok "API service up" || warn "API not running — check 'journalctl -u dubai-hunt-api -n 50'"
 $SUDO systemctl is-active --quiet dubai-hunt-bot && ok "Bot service up" || warn "Bot not running — check 'journalctl -u dubai-hunt-bot -n 50'"
@@ -180,21 +182,25 @@ ok "Cron installed"
 step "SSH hardening + fail2ban"
 AUTH_KEYS="${DEPLOY_HOME}/.ssh/authorized_keys"
 if [[ -s "$AUTH_KEYS" ]]; then
-    SSHD_CFG=/etc/ssh/sshd_config
-    if grep -qE '^[[:space:]]*PasswordAuthentication[[:space:]]+yes' "$SSHD_CFG" 2>/dev/null; then
-        $SUDO sed -i.bak -E 's/^[[:space:]]*PasswordAuthentication[[:space:]]+yes/PasswordAuthentication no/' "$SSHD_CFG"
-        ok "PasswordAuthentication → no (backup at sshd_config.bak)"
-    elif ! grep -qE '^[[:space:]]*PasswordAuthentication' "$SSHD_CFG" 2>/dev/null; then
-        echo "PasswordAuthentication no" | $SUDO tee -a "$SSHD_CFG" >/dev/null
-        ok "PasswordAuthentication explicitly set to no"
+    # Cloud-init / cloud-image drop-ins under /etc/ssh/sshd_config.d/ are loaded
+    # alphabetically AND the first occurrence of each directive wins. So we
+    # write to 01-* to beat any 50-cloud-init.conf default.
+    SSHD_DROPIN=/etc/ssh/sshd_config.d/01-dubai-hunt-hardening.conf
+    $SUDO tee "$SSHD_DROPIN" >/dev/null <<'EOF'
+# Managed by deploy.sh — re-applied on every deploy.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+EOF
+    $SUDO chmod 644 "$SSHD_DROPIN"
+    # validate before reload — sshd refuses to reload with a bad config
+    if $SUDO sshd -t 2>/dev/null; then
+        $SUDO systemctl reload ssh 2>/dev/null || $SUDO systemctl reload sshd 2>/dev/null || true
+        ok "Password + keyboard-interactive auth disabled (key-only)"
     else
-        ok "PasswordAuthentication already disabled"
+        $SUDO rm -f "$SSHD_DROPIN"
+        warn "sshd config validation failed — hardening reverted"
     fi
-    # Also disable challenge/response, which can bypass the password flag on some distros
-    if grep -qE '^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes' "$SSHD_CFG" 2>/dev/null; then
-        $SUDO sed -i -E 's/^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes/KbdInteractiveAuthentication no/' "$SSHD_CFG"
-    fi
-    $SUDO systemctl reload ssh 2>/dev/null || $SUDO systemctl reload sshd 2>/dev/null || true
 else
     warn "No SSH key in $AUTH_KEYS — leaving PasswordAuthentication alone to avoid lockout"
 fi
