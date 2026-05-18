@@ -48,13 +48,14 @@ VPS_TMP_PATH = "/tmp/bayut_sync.json"
 # ── auth flow ─────────────────────────────────────────────────────────────────
 def run_auth_setup():
     """Open Bayut in a visible browser so the user can solve any CAPTCHA,
-    then save the storage state (cookies + localStorage) for future runs."""
+    then AUTO-DETECT success by polling the page state and save cookies."""
     from patchright.sync_api import sync_playwright
     print("\n\033[1;36m▶ Auth setup — opening Bayut in a visible window\033[0m")
-    print("  1. Wait for the page to load.")
-    print("  2. Solve any CAPTCHA / 'I'm human' challenge.")
-    print("  3. Once you see the normal Bayut listings (or just the homepage),")
-    print("     come back here and press ENTER.\n")
+    print("  A Chromium window will pop up on a Bayut listings page.")
+    print("  • If you see a CAPTCHA → solve it.")
+    print("  • If you see real apartment listings → you're already through.")
+    print("  This script will auto-detect success and save your session.")
+    print("  No need to press anything here — just deal with the browser.\n")
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as pw:
@@ -70,15 +71,44 @@ def run_auth_setup():
         page = ctx.new_page()
         page.goto("https://www.bayut.com/to-rent/apartments/dubai/deira/"
                   "?furnishing_status=furnished&beds_in=1&price_to=72000&rent_frequency=yearly",
-                  wait_until="domcontentloaded")
-        input("\n  >> Solve any CAPTCHA in the browser, then press ENTER here to save the session…")
+                  wait_until="domcontentloaded", timeout=60000)
+
+        # Poll the page every 2 seconds. Two success conditions:
+        #   - At least 3 listing links visible (a[href*="/property/details-"]) → DOM-rendered listings
+        #   - window.state.algolia.content.hits has items → Bayut's own hydration succeeded
+        # Time-out after 10 min so the user has plenty of time.
+        print("  …waiting for Bayut listings to appear", end="", flush=True)
+        success_js = """
+        () => {
+          try {
+            const hits = window?.state?.algolia?.content?.hits;
+            if (Array.isArray(hits) && hits.length > 0) return true;
+          } catch(e) {}
+          const links = document.querySelectorAll('a[href*="/property/details-"]');
+          return links.length >= 3;
+        }
+        """
+        try:
+            for tick in range(300):  # 300 × 2s = 10 min max
+                if page.evaluate(success_js):
+                    print(" detected!", flush=True)
+                    break
+                time.sleep(2)
+                if tick % 5 == 0:
+                    print(".", end="", flush=True)
+            else:
+                print("\n  \033[33m⚠\033[0m 10-min timeout — saving whatever cookies are present anyway")
+        except Exception as e:
+            print(f"\n  \033[33m⚠\033[0m page poll error: {e} — saving current state")
+
+        # Wait a couple extra seconds so any post-CAPTCHA cookie sets land.
+        time.sleep(3)
         ctx.storage_state(path=str(AUTH_STATE))
         browser.close()
 
     size = AUTH_STATE.stat().st_size if AUTH_STATE.exists() else 0
     if size > 100:
-        print(f"\n  \033[32m✓\033[0m Saved {size} bytes of session state to {AUTH_STATE}")
-        print(f"  Future runs:  python -X utf8 scripts/sync_bayut_to_vps.py")
+        print(f"\n  \033[32m✓\033[0m Saved {size:,} bytes of session state to {AUTH_STATE.name}")
         return 0
     else:
         print(f"\n  \033[31m✗\033[0m Storage state empty — try again")
