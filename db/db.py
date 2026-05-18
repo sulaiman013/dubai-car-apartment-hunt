@@ -27,11 +27,18 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Idempotent. Creates schema if it doesn't exist."""
+    """Idempotent. Creates schema if it doesn't exist + self-heals new columns."""
     con = _connect()
     try:
         with open(SCHEMA_PATH, encoding="utf-8") as f:
             con.executescript(f.read())
+        # Self-healing migrations for columns added after the initial deploy.
+        # sqlite has no IF NOT EXISTS on ADD COLUMN, so check first.
+        existing = {r[1] for r in con.execute("PRAGMA table_info(cars)").fetchall()}
+        if "listed_at" not in existing:
+            con.execute("ALTER TABLE cars ADD COLUMN listed_at TEXT")
+            con.execute("CREATE INDEX IF NOT EXISTS ix_cars_listed ON cars(listed_at)")
+        con.commit()
     finally:
         con.close()
 
@@ -83,7 +90,8 @@ def _row_to_apt(r: sqlite3.Row) -> dict:
 # ─── upserts ───────────────────────────────────────────────────────────────────
 CAR_COLS = (
     "ad_id source title brand year km price_aed transmission trim color body_type "
-    "fuel seller_type location has_sunroof features description image url scraped_at"
+    "fuel seller_type location has_sunroof features description image url scraped_at "
+    "listed_at"
 ).split()
 
 def upsert_car(rec: dict) -> str:
@@ -114,6 +122,7 @@ def upsert_car(rec: dict) -> str:
         "image":         rec.get("image") or "",
         "url":           rec.get("url") or "",
         "scraped_at":    rec.get("scraped_at") or now,
+        "listed_at":     rec.get("listed_at") or None,   # ISO date when seller posted (Dubizzle only for now)
     }
     if not payload["ad_id"]:
         return "skipped"

@@ -120,6 +120,7 @@ class Listing:
     url: str = ""
     scraped_at: str = ""
     ad_id: str = ""
+    listed_at: str = ""   # ISO date (yyyy-mm-dd) of when seller posted; "" if source doesn't expose it
 
     def csv_row(self) -> dict:
         d = asdict(self)
@@ -403,6 +404,10 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
             price = _coerce_int(h.get("price")) or 0
             if price <= 0 or price > MAX_PRICE_AED:
                 continue
+            # Garbage filter: dealer placeholder ads use price=1 with km=1 and year=current.
+            # Real used cars under AED 5K are vanishingly rare; treat as data pollution.
+            if price < 5000:
+                continue
 
             # Dubai-only filter (location_list is the source of truth for Dubizzle)
             loc_parts = (h.get("location_list") or {}).get("en", []) or []
@@ -443,6 +448,16 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
 
             sunroof = _has_sunroof(name, " ".join(feats))
 
+            # Extract Dubizzle's posted-date from the `added` Unix timestamp.
+            # Falls back to `created_at` if `added` is missing.
+            listed_iso = ""
+            ts = _coerce_int(h.get("added")) or _coerce_int(h.get("created_at"))
+            if ts:
+                try:
+                    listed_iso = datetime.fromtimestamp(ts).date().isoformat()
+                except Exception:
+                    listed_iso = ""
+
             candidates.append({
                 "_h": h,  # keep raw for late mutations
                 "name": name, "price": price, "year": year, "km": km,
@@ -450,6 +465,7 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
                 "body_type": body_type, "fuel": fuel, "seller_type": seller_type,
                 "location": location, "absolute": absolute, "image": image,
                 "feats": feats, "sunroof": sunroof,
+                "listed_at": listed_iso,
             })
         except Exception as e:
             log(f"  Dubizzle: row error: {e}")
@@ -542,6 +558,7 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
                 url=cand["absolute"],
                 scraped_at=datetime.now().isoformat(timespec="seconds"),
                 ad_id=f"dubizzle_{h.get('uuid') or h.get('id') or ''}",
+                listed_at=cand.get("listed_at", ""),
             )
         )
 
@@ -601,6 +618,11 @@ def scrape_yallamotor(page, brand_label: str, mk: str, mdl: str) -> list[Listing
         offer = car.get("offers") or {}
         price = _coerce_int(offer.get("price")) or 0
         if price <= 0 or price > MAX_PRICE_AED:
+            continue
+        # Garbage filter — see scrape_dubizzle(). YallaMotor's "1 AED placeholders"
+        # for showroom-new cars were the source of the pollution previously visible
+        # at the cheap end of /cars?sort=price_asc.
+        if price < 5000:
             continue
 
         mileage = car.get("mileageFromOdometer") or {}
@@ -682,6 +704,9 @@ def scrape_dubicars(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
         else:
             price = raw_price
         if price <= 0 or price > MAX_PRICE_AED:
+            continue
+        # Garbage filter — see scrape_dubizzle()
+        if price < 5000:
             continue
 
         name = car.get("name") or ""
@@ -857,6 +882,7 @@ def scrape_dubicars_generic(page) -> list[Listing]:
             else:
                 price = raw_price
             if price <= 0 or price > MAX_PRICE_AED: continue
+            if price < 5000: continue   # garbage filter — see scrape_dubizzle()
 
             name = car.get("name") or ""
             desc = car.get("description") or ""
@@ -897,19 +923,72 @@ def scrape_dubicars_generic(page) -> list[Listing]:
 
 
 # ─── pipeline ──────────────────────────────────────────────────────────────────
+
+# Source priority for cross-source dedup: when the same physical car appears on
+# multiple sites, keep the one from the source with the most data quality.
+# Dubizzle exposes listed_at + features + seller_type → wins.
+# DubiCars has detailed schema.org Car fields → second.
+# YallaMotor has the leanest data → last.
+_SOURCE_PRIORITY = {"Dubizzle": 0, "DubiCars": 1, "YallaMotor": 2, "CarSwitch": 3}
+
+
+def _xsource_key(r: "Listing") -> tuple | None:
+    """Bucket-fingerprint for matching the same physical car across sources.
+
+    None when we can't fingerprint (missing year/km/price) → keep as-is.
+    Buckets are intentionally lossy:
+      - km bucketed to nearest 5,000  → tolerates seller-typed-slightly-different odometer
+      - price bucketed to nearest 500 → tolerates currency rounding (AED vs USD-mislabeled-as-AED on DubiCars)
+    """
+    if not r.brand or not r.year or not r.km or not r.price_aed:
+        return None
+    brand_norm = re.sub(r"\s+", " ", r.brand.strip().lower())
+    return (brand_norm, int(r.year), int(r.km) // 5000, int(r.price_aed) // 500)
+
+
 def merge_dedupe(rows: Iterable[Listing]) -> list[Listing]:
-    seen: dict[tuple, Listing] = {}
-    dropped = 0
+    # Step 1: Dubai-only filter + within-source dedup (by ad_id).
+    by_ad: dict[tuple, Listing] = {}
+    dropped_non_dubai = 0
     for r in rows:
-        # Belt-and-suspenders: drop anything that isn't Dubai-based.
         if not _is_dubai(r.location):
-            dropped += 1
+            dropped_non_dubai += 1
             continue
         key = (r.ad_id,) if r.ad_id else (r.source, r.url)
-        seen[key] = r
-    if dropped:
-        log(f"  merge_dedupe: dropped {dropped} non-Dubai listings")
-    return list(seen.values())
+        by_ad[key] = r
+    if dropped_non_dubai:
+        log(f"  merge_dedupe: dropped {dropped_non_dubai} non-Dubai listings")
+
+    # Step 2: cross-source dedup. Same physical car on Dubizzle + DubiCars + YallaMotor
+    # produces 3 ad_ids today; keep the one from the highest-priority source.
+    survivors: dict[tuple, Listing] = {}
+    unmatched: list[Listing] = []
+    dropped_xsource = 0
+    for r in by_ad.values():
+        k = _xsource_key(r)
+        if k is None:
+            # Can't fingerprint → keep, can't be deduped
+            unmatched.append(r)
+            continue
+        incumbent = survivors.get(k)
+        if incumbent is None:
+            survivors[k] = r
+        else:
+            # Merge: keep whichever source ranks higher
+            keep = r if _SOURCE_PRIORITY.get(r.source, 99) < _SOURCE_PRIORITY.get(incumbent.source, 99) else incumbent
+            drop = incumbent if keep is r else r
+            # Carry over listed_at from the dropped record if winner doesn't have one
+            if not keep.listed_at and drop.listed_at:
+                keep.listed_at = drop.listed_at
+            # Carry over features/sunroof too — small enrichment win
+            if not keep.has_sunroof and drop.has_sunroof:
+                keep.has_sunroof = True
+            survivors[k] = keep
+            dropped_xsource += 1
+    if dropped_xsource:
+        log(f"  merge_dedupe: cross-source dedup removed {dropped_xsource} duplicate listings")
+
+    return list(survivors.values()) + unmatched
 
 
 DATA_JSON_BAK = DATA_JSON + ".bak"

@@ -25,6 +25,7 @@ def query_cars(
     brand: str | None = None,
     source: str | None = None,
     location: str | None = None,
+    max_age_days: int | None = 7,
     include_inactive: bool = False,
     sort: str = "sunroof_then_price",
     limit: int = 50,
@@ -41,6 +42,11 @@ def query_cars(
     if brand:    parts.append("LOWER(brand) LIKE LOWER(?)"); params.append(f"%{brand}%")
     if source:   parts.append("source=?"); params.append(source)
     if location: parts.append("LOWER(location) LIKE LOWER(?)"); params.append(f"%{location}%")
+    # Age filter — Dubizzle has real listed_at, other sources fall back to first_seen_at.
+    # Pass max_age_days=None or 0 to disable (returns all-time listings).
+    if max_age_days and max_age_days > 0:
+        parts.append("COALESCE(listed_at, first_seen_at) >= date('now', ?)")
+        params.append(f"-{int(max_age_days)} days")
 
     sort_clause = {
         "sunroof_then_price": "has_sunroof DESC, price_aed ASC",
@@ -113,16 +119,21 @@ def get_apartment(ad_id: str) -> dict | None:
 
 
 # ─── stats ────────────────────────────────────────────────────────────────────
+# Cars headline counts apply the same default age filter as the /cars endpoint
+# so the dashboard "X listings" stat doesn't mislead about stale inventory.
+_CARS_FRESH = "is_active=1 AND COALESCE(listed_at, first_seen_at) >= date('now', '-7 days')"
+
+
 def get_stats() -> dict:
     init_db()
     with cur() as c:
-        c.execute("SELECT COUNT(*) FROM cars WHERE is_active=1")
+        c.execute(f"SELECT COUNT(*) FROM cars WHERE {_CARS_FRESH}")
         cars_total = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM cars WHERE is_active=1 AND has_sunroof=1")
+        c.execute(f"SELECT COUNT(*) FROM cars WHERE {_CARS_FRESH} AND has_sunroof=1")
         cars_sun = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM cars WHERE is_active=1 AND price_aed BETWEEN 1 AND 20000")
+        c.execute(f"SELECT COUNT(*) FROM cars WHERE {_CARS_FRESH} AND price_aed BETWEEN 1 AND 20000")
         cars_under_20k = c.fetchone()[0]
-        c.execute("SELECT brand, COUNT(*) FROM cars WHERE is_active=1 GROUP BY brand ORDER BY 2 DESC")
+        c.execute(f"SELECT brand, COUNT(*) FROM cars WHERE {_CARS_FRESH} GROUP BY brand ORDER BY 2 DESC")
         cars_by_brand = {r[0]: r[1] for r in c.fetchall()}
 
         c.execute("SELECT COUNT(*) FROM apartments WHERE is_active=1")

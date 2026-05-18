@@ -87,6 +87,7 @@ def list_cars(
     brand:       str  | None = None,
     source:      str  | None = None,
     location:    str  | None = None,
+    max_age_days: int | None = Query(7, ge=0, le=365),
     sort:        str  = Query("sunroof_then_price"),
     limit:       int  = Query(50, ge=1, le=500),
     include_inactive: bool = False,
@@ -96,6 +97,7 @@ def list_cars(
         max_price=max_price, min_price=min_price,
         max_km=max_km, min_year=min_year,
         brand=brand, source=source, location=location,
+        max_age_days=max_age_days,
         sort=sort, limit=limit, include_inactive=include_inactive,
     )
     return {"count": len(rows), "results": rows}

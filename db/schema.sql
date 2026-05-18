@@ -28,12 +28,14 @@ CREATE TABLE IF NOT EXISTS cars (
     url            TEXT,
     scraped_at     TEXT,                          -- ISO timestamp last seen
     first_seen_at  TEXT,                          -- ISO timestamp first inserted
+    listed_at      TEXT,                          -- ISO date when seller posted (Dubizzle has it; NULL for sources that don't expose it)
     is_active      INTEGER NOT NULL DEFAULT 1     -- 0 if removed in latest run
 );
 CREATE INDEX IF NOT EXISTS ix_cars_price  ON cars(price_aed);
 CREATE INDEX IF NOT EXISTS ix_cars_brand  ON cars(brand);
 CREATE INDEX IF NOT EXISTS ix_cars_sun    ON cars(has_sunroof);
 CREATE INDEX IF NOT EXISTS ix_cars_active ON cars(is_active);
+CREATE INDEX IF NOT EXISTS ix_cars_listed ON cars(listed_at);
 
 -- ── apartments ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS apartments (
