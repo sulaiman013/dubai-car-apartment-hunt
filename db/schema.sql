@@ -35,7 +35,8 @@ CREATE INDEX IF NOT EXISTS ix_cars_price  ON cars(price_aed);
 CREATE INDEX IF NOT EXISTS ix_cars_brand  ON cars(brand);
 CREATE INDEX IF NOT EXISTS ix_cars_sun    ON cars(has_sunroof);
 CREATE INDEX IF NOT EXISTS ix_cars_active ON cars(is_active);
-CREATE INDEX IF NOT EXISTS ix_cars_listed ON cars(listed_at);
+-- ix_cars_listed is created in db.py:init_db() after the self-healing ALTER TABLE,
+-- so on a fresh DB it ALSO appears (init_db is idempotent).
 
 -- ── apartments ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS apartments (
