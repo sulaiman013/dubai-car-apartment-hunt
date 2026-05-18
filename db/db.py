@@ -218,6 +218,27 @@ def mark_inactive_cars(seen_ad_ids: Iterable[str]) -> int:
         return c.rowcount or 0
 
 
+def mark_inactive_cars_for_source(seen_ad_ids: Iterable[str], source: str) -> int:
+    """Per-source deactivation: only touch rows where source=? AND ad_id NOT IN seen.
+
+    Used by the daily full-sweep so a bot-walled source (returns 0) doesn't
+    wipe its records. The caller should skip this entirely when a source
+    returned 0 listings — that's a scrape failure, not "the source has no inventory".
+    """
+    ids = list(set(seen_ad_ids))
+    if not ids or not source:
+        return 0
+    init_db()
+    with cur() as c:
+        placeholders = ",".join("?" * len(ids))
+        c.execute(
+            f"UPDATE cars SET is_active=0 "
+            f"WHERE source=? AND ad_id NOT IN ({placeholders}) AND is_active=1",
+            [source, *ids],
+        )
+        return c.rowcount or 0
+
+
 def mark_inactive_apartments(seen_ad_ids: Iterable[str]) -> int:
     ids = list(set(seen_ad_ids))
     if not ids:
@@ -228,6 +249,22 @@ def mark_inactive_apartments(seen_ad_ids: Iterable[str]) -> int:
         c.execute(
             f"UPDATE apartments SET is_active=0 WHERE ad_id NOT IN ({placeholders}) AND is_active=1",
             ids,
+        )
+        return c.rowcount or 0
+
+
+def mark_inactive_apartments_for_source(seen_ad_ids: Iterable[str], source: str) -> int:
+    """Per-source deactivation — see mark_inactive_cars_for_source() for rationale."""
+    ids = list(set(seen_ad_ids))
+    if not ids or not source:
+        return 0
+    init_db()
+    with cur() as c:
+        placeholders = ",".join("?" * len(ids))
+        c.execute(
+            f"UPDATE apartments SET is_active=0 "
+            f"WHERE source=? AND ad_id NOT IN ({placeholders}) AND is_active=1",
+            [source, *ids],
         )
         return c.rowcount or 0
 

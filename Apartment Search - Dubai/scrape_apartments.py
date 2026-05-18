@@ -524,7 +524,7 @@ def save_outputs(rows: list[Apartment], final: bool = False) -> None:
         _root = os.path.dirname(HERE)
         if _root not in _sys.path:
             _sys.path.insert(0, _root)
-        from db.db import upsert_apartment, mark_inactive_apartments  # type: ignore
+        from db.db import upsert_apartment, mark_inactive_apartments_for_source  # type: ignore
         ins = upd = 0
         for r in rows_sorted:
             res = upsert_apartment(asdict(r))
@@ -536,9 +536,26 @@ def save_outputs(rows: list[Apartment], final: bool = False) -> None:
         is_partial = bool(os.environ.get("AREAS", "").strip())
         append_only = os.environ.get("APPEND_ONLY", "").strip() in ("1", "true", "yes")
         if final and not is_partial and not append_only:
-            seen = [r.ad_id for r in rows_sorted]
-            deactivated = mark_inactive_apartments(seen) if seen else 0
-            if deactivated: log(f"DB: marked {deactivated} stale apartments as inactive")
+            # Per-source deactivation: a source that returned 0 listings is treated
+            # as a SCRAPE FAILURE (bot wall, network glitch, source rename) — its
+            # records are preserved. Only sources that successfully scraped >=1
+            # listing get their stale rows deactivated.
+            by_source: dict[str, list[str]] = {}
+            for r in rows_sorted:
+                by_source.setdefault(r.source, []).append(r.ad_id)
+            total_deactivated = 0
+            for src, seen_ids in by_source.items():
+                if not seen_ids:
+                    log(f"DB: skipping mark_inactive for {src} — returned 0 listings (likely bot-walled)")
+                    continue
+                n = mark_inactive_apartments_for_source(seen_ids, src)
+                if n:
+                    log(f"DB: marked {n} stale {src} apartments as inactive")
+                total_deactivated += n
+            # Sources expected to be hit but absent from rows_sorted = scrape never ran them
+            # (or all returned 0). We DON'T touch their records.
+            if not total_deactivated:
+                log("DB: no apartments deactivated (every contributing source either returned all known listings or none)")
         elif final and is_partial:
             log("DB: skipping mark_inactive — partial run (AREAS filter set)")
         elif final and append_only:

@@ -1014,7 +1014,7 @@ def save_outputs(rows: list[Listing], final: bool = False) -> None:
         _root = os.path.dirname(HERE)
         if _root not in _sys.path:
             _sys.path.insert(0, _root)
-        from db.db import upsert_car, mark_inactive_cars  # type: ignore
+        from db.db import upsert_car, mark_inactive_cars_for_source  # type: ignore
         ins = upd = 0
         for r in rows_sorted:
             res = upsert_car(asdict(r))
@@ -1028,9 +1028,23 @@ def save_outputs(rows: list[Listing], final: bool = False) -> None:
         is_partial = bool(os.environ.get("BRANDS", "").strip())
         append_only = os.environ.get("APPEND_ONLY", "").strip() in ("1", "true", "yes")
         if final and not is_partial and not append_only:
-            seen = [r.ad_id for r in rows_sorted]
-            deactivated = mark_inactive_cars(seen) if seen else 0
-            if deactivated: log(f"DB: marked {deactivated} stale cars as inactive")
+            # Per-source deactivation: see apartments scraper for rationale.
+            # A source that returned 0 listings is treated as a scrape failure —
+            # its records stay active until the source recovers.
+            by_source: dict[str, list[str]] = {}
+            for r in rows_sorted:
+                by_source.setdefault(r.source, []).append(r.ad_id)
+            total = 0
+            for src, seen_ids in by_source.items():
+                if not seen_ids:
+                    log(f"DB: skipping mark_inactive for {src} — returned 0 listings")
+                    continue
+                n = mark_inactive_cars_for_source(seen_ids, src)
+                if n:
+                    log(f"DB: marked {n} stale {src} cars as inactive")
+                total += n
+            if not total:
+                log("DB: no cars deactivated (no stale rows in successfully-scraped sources)")
         elif final and is_partial:
             log("DB: skipping mark_inactive — partial run (BRANDS filter set)")
         elif final and append_only:
