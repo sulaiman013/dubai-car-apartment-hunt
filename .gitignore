@@ -83,3 +83,6 @@ _backup_pre_uidemo/
 
 # ── deploy/ scratch probes (one-off local scripts, not part of the deploy) ──
 deploy/_*
+
+# ── Bayut → VPS sync artifact (regenerated on every sync run) ──
+_sync_bayut.json
