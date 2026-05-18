@@ -18,11 +18,19 @@ from __future__ import annotations
 import csv
 import json
 import os
+import random
 import re
 import sys
 import time
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
+
+
+def jitter_sleep(base_seconds: float, spread: float = 0.5) -> None:
+    """Sleep base_seconds ± (spread × base) of random jitter — looks human."""
+    low  = max(0.1, base_seconds * (1 - spread))
+    high = base_seconds * (1 + spread)
+    time.sleep(random.uniform(low, high))
 from typing import Iterable, Optional
 
 # Patchright = drop-in stealth Playwright. Crucial for Dubizzle/Bayut bot walls.
@@ -366,8 +374,8 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
         if len(html) > 50_000 and "__NEXT_DATA__" in html:
             break
         wait = 8 * (attempt + 1)  # 8s, 16s (was 12+24+36)
-        log(f"  Dubizzle: looks like bot wall (len={len(html)}) — backing off {wait}s")
-        time.sleep(wait)
+        log(f"  Dubizzle: looks like bot wall (len={len(html)}) — backing off ~{wait}s with jitter")
+        jitter_sleep(wait, spread=0.3)   # 0.7×–1.3× variation
     m = re.search(
         r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
         html,
@@ -508,7 +516,7 @@ def scrape_dubizzle(page, brand_label: str, mk: str, mdl: str) -> list[Listing]:
                 desc = more_desc
             extra.update(more_extra)
             detail_fetches += 1
-            time.sleep(DETAIL_FETCH_DELAY_S)
+            jitter_sleep(DETAIL_FETCH_DELAY_S)   # human-like pause between Dubizzle detail pages
 
         # Final field assembly: prefer detail-page values, then candidate values,
         # then title-derived fallbacks.
@@ -918,7 +926,7 @@ def scrape_dubicars_generic(page) -> list[Listing]:
             ))
             kept += 1
         log(f"  DubiCars (generic) page {page_num}: {kept} of {len(items)} priced ≤ {MAX_PRICE_AED}")
-        time.sleep(1.2)
+        jitter_sleep(1.2)   # 0.6–1.8s between DubiCars generic-sweep pages
     return out
 
 

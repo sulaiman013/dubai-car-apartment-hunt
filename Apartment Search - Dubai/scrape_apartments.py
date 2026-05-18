@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -26,6 +27,19 @@ from datetime import datetime
 from typing import Iterable
 
 from patchright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
+
+
+def jitter_sleep(base_seconds: float, spread: float = 0.5) -> None:
+    """Sleep `base_seconds` ± up to `spread × base_seconds` of random jitter.
+
+    Predictable inter-request timing is one of the strongest bot signals.
+    Real humans browse with variable pauses (reading time, network hiccups,
+    distractions). spread=0.5 means actual sleep is uniform in
+    [base × 0.5, base × 1.5] — typically 50%–150% of nominal.
+    """
+    low  = max(0.1, base_seconds * (1 - spread))
+    high = base_seconds * (1 + spread)
+    time.sleep(random.uniform(low, high))
 
 # ─── config ────────────────────────────────────────────────────────────────────
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -350,7 +364,7 @@ def scrape_bayut(page) -> list[Apartment]:
             out.append(ap)
             kept += 1
         log(f"  Bayut: {area_name}: kept {kept} (main={len(main_hits)}, recs={len(rec_hits)})")
-        time.sleep(1.5)
+        jitter_sleep(1.5)   # 0.75–2.25s between Bayut areas
     return out
 
 
@@ -497,7 +511,7 @@ def scrape_propertyfinder(page) -> list[Apartment]:
             if len(listings) < 25:
                 break
 
-            time.sleep(1.2)
+            jitter_sleep(1.2)   # 0.6–1.8s between PF pagination requests
 
         log(f"  PF {area_name}: TOTAL kept {area_kept}")
     return out
