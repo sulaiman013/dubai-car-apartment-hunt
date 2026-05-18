@@ -11,11 +11,15 @@ Why this exists:
 
   Result: the VPS DB gets fresh Bayut data without ever needing to scrape it itself.
 
-Usage (from the project root):
+Usage:
+    # ONE-TIME setup (visible browser opens — solve any CAPTCHA, then Enter):
+    python -X utf8 scripts/sync_bayut_to_vps.py --auth
+
+    # Every other run (silent, uses saved cookies):
     python -X utf8 scripts/sync_bayut_to_vps.py
 
 Requires:
-    - The same venv that runs the scrapers (patchright installed)
+    - patchright installed (already on this laptop)
     - ~/.ssh/oracle_dubai SSH key already authorized on the VPS
 """
 from __future__ import annotations
@@ -33,10 +37,52 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRAPER_DIR = ROOT / "Apartment Search - Dubai"
 SYNC_JSON_LOCAL = ROOT / "_sync_bayut.json"
+AUTH_DIR = SCRAPER_DIR / ".auth"
+AUTH_STATE = AUTH_DIR / "bayut_state.json"   # cookies + localStorage from a human-solved CAPTCHA
 SSH_KEY = Path(os.path.expanduser("~/.ssh/oracle_dubai"))
 VPS = "root@31.97.71.84"
 VPS_PROJECT = "/root/dubai-hunt"
 VPS_TMP_PATH = "/tmp/bayut_sync.json"
+
+
+# ── auth flow ─────────────────────────────────────────────────────────────────
+def run_auth_setup():
+    """Open Bayut in a visible browser so the user can solve any CAPTCHA,
+    then save the storage state (cookies + localStorage) for future runs."""
+    from patchright.sync_api import sync_playwright
+    print("\n\033[1;36m▶ Auth setup — opening Bayut in a visible window\033[0m")
+    print("  1. Wait for the page to load.")
+    print("  2. Solve any CAPTCHA / 'I'm human' challenge.")
+    print("  3. Once you see the normal Bayut listings (or just the homepage),")
+    print("     come back here and press ENTER.\n")
+    AUTH_DIR.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=False, channel="chromium",
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+        )
+        ctx = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            viewport={"width": 1440, "height": 900}, locale="en-AE",
+        )
+        page = ctx.new_page()
+        page.goto("https://www.bayut.com/to-rent/apartments/dubai/deira/"
+                  "?furnishing_status=furnished&beds_in=1&price_to=72000&rent_frequency=yearly",
+                  wait_until="domcontentloaded")
+        input("\n  >> Solve any CAPTCHA in the browser, then press ENTER here to save the session…")
+        ctx.storage_state(path=str(AUTH_STATE))
+        browser.close()
+
+    size = AUTH_STATE.stat().st_size if AUTH_STATE.exists() else 0
+    if size > 100:
+        print(f"\n  \033[32m✓\033[0m Saved {size} bytes of session state to {AUTH_STATE}")
+        print(f"  Future runs:  python -X utf8 scripts/sync_bayut_to_vps.py")
+        return 0
+    else:
+        print(f"\n  \033[31m✗\033[0m Storage state empty — try again")
+        return 1
 
 
 def step(msg: str) -> None:
@@ -53,6 +99,9 @@ def fail(msg: str) -> None:
 
 
 def main() -> int:
+    if "--auth" in sys.argv[1:]:
+        return run_auth_setup()
+
     print("=" * 64)
     print("  Bayut → VPS sync")
     print("=" * 64)
@@ -72,20 +121,53 @@ def main() -> int:
         "_scr_apt", SCRAPER_DIR / "scrape_apartments.py"
     )
     scr = importlib.util.module_from_spec(spec)
+    # Must register in sys.modules BEFORE exec_module so the @dataclass decorator's
+    # `sys.modules.get(cls.__module__)` lookup inside Python 3.13's dataclasses
+    # implementation succeeds. Otherwise it returns None and crashes on __dict__.
+    sys.modules["_scr_apt"] = scr
     spec.loader.exec_module(scr)
     from patchright.sync_api import sync_playwright
 
+    # Load the saved storage state (cookies + localStorage from human-solved CAPTCHA).
+    # If it doesn't exist, instruct the user to run --auth once first.
+    if not AUTH_STATE.exists():
+        fail("No Bayut session saved.\n"
+             "  Run this first to capture one (visible browser, solve CAPTCHA, press Enter):\n"
+             "    python -X utf8 scripts/sync_bayut_to_vps.py --auth")
+
+    def _scrape_with(pw, headless: bool):
+        browser = pw.chromium.launch(
+            headless=headless, channel="chromium",
+            args=(["--window-position=-3000,-3000", "--window-size=1920,1080"] if not headless else []) + [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+            ],
+        )
+        ctx = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            viewport={"width": 1440, "height": 900}, locale="en-AE",
+            storage_state=str(AUTH_STATE),   # ← human-solved CAPTCHA cookies
+        )
+        page = ctx.new_page()
+        try:
+            return scr.scrape_bayut(page)
+        finally:
+            # Persist any updated cookies (Bayut rotates session tokens periodically)
+            try: ctx.storage_state(path=str(AUTH_STATE))
+            except Exception: pass
+            try: ctx.close()
+            except Exception: pass
+            try: browser.close()
+            except Exception: pass
+
     try:
         with sync_playwright() as pw:
-            browser, ctx = scr._new_browser(pw)
-            page = ctx.new_page()
-            try:
-                rows = scr.scrape_bayut(page)
-            finally:
-                try: ctx.close()
-                except Exception: pass
-                try: browser.close()
-                except Exception: pass
+            print("    (silent headless mode, using saved Bayut session)", flush=True)
+            rows = _scrape_with(pw, headless=True)
+            if not rows:
+                print("    headless returned 0 — Bayut may have rotated session tokens.")
+                print("    Run --auth again to refresh.", flush=True)
     except Exception as e:
         fail(f"scraper crashed: {e}")
 
